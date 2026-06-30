@@ -4,17 +4,13 @@ import {
   Tooltip, ResponsiveContainer, AreaChart, Area, Legend
 } from "recharts";
 
-// ─── FIREBASE CONFIG ──────────────────────────────────────────────────────────
-// Replace these with your actual Firebase project values
-// Get them from: Firebase Console → Project Settings → Your apps → SDK setup
 const FIREBASE_PROJECT_ID = "internetofthings-26312";
 const FIREBASE_API_KEY    = "AIzaSyBSWR_5mZqJVREUxSesooHKZ7g2FBQXQKs";
 const FIREBASE_AUTH_DOMAIN = "internetofthings-26312.firebaseapp.com";
 
-// Firestore REST API base URL (no SDK needed — pure fetch)
 const FIRESTORE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
+
 function firestoreValueToJS(val) {
   if (val.doubleValue !== undefined) return val.doubleValue;
   if (val.integerValue !== undefined) return Number(val.integerValue);
@@ -40,7 +36,6 @@ function firestoreDocToJS(doc) {
 }
 
 async function fetchReadings(limitN = 20) {
-  // Fetches from collection "readings", ordered by timestamp desc
   const url = `${FIRESTORE_URL}/readings?orderBy=timestamp desc&pageSize=${limitN}&key=${FIREBASE_API_KEY}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("Firestore fetch failed");
@@ -48,7 +43,6 @@ async function fetchReadings(limitN = 20) {
   return (data.documents || []).map(firestoreDocToJS).reverse();
 }
 
-// ─── STATUS HELPERS ───────────────────────────────────────────────────────────
 function tempStatus(t) {
   if (t >= 15 && t <= 25) return "optimal";
   if (t > 25 && t <= 30) return "warn";
@@ -60,8 +54,8 @@ function humStatus(h) {
   return "bad";
 }
 function moistStatus(m) {
-  if (m >= 60 && m <= 80) return "optimal";  // changed upper limit 85→80
-  if (m >= 50 && m < 60)  return "warn";     // changed lower limit 40→50
+  if (m >= 60 && m <= 80) return "optimal";  
+  if (m >= 50 && m < 60)  return "warn";     
   return "bad";
 }
 function phStatus(ph) {
@@ -76,7 +70,6 @@ const STATUS_META = {
   bad:     { label: "Critical", bg: "#FCEBEB", color: "#A32D2D", dot: "#E24B4A" },
 };
 
-// ─── SUBCOMPONENTS ────────────────────────────────────────────────────────────
 function Badge({ status }) {
   const m = STATUS_META[status] || STATUS_META.warn;
   return (
@@ -121,7 +114,6 @@ function BedRow({ name, pct }) {
   );
 }
 
-// ─── MOCK DATA (used when Firebase not connected) ─────────────────────────────
 function generateMockReadings(n = 20) {
   const now = Date.now();
   return Array.from({ length: n }, (_, i) => ({
@@ -142,7 +134,6 @@ const MOCK_BEDS = [
   { name: "Bed 5", pct: 34 }, { name: "Bed 6", pct: 65 },
 ];
 
-// ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 export default function VermicultureDashboard() {
   const [readings, setReadings]   = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -159,7 +150,7 @@ export default function VermicultureDashboard() {
       setError(null);
       setUseMock(false);
     } catch (e) {
-      // Fall back to mock data so the UI is always usable
+      
       console.warn("Firebase error:", e.message);
       setError(e.message);
       setUseMock(false);
