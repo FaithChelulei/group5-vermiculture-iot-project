@@ -207,8 +207,8 @@ while True:
               "(Raw:", ph_raw, ")")
 
         if (temp > 30 or temp < 10 or
-            moisture_percent < 50 or
-            moisture_percent > 85 or
+            moisture_percent < 40 or
+            moisture_percent > 80 or
             ph_value < 5.5 or
             ph_value > 8.5):
 
@@ -230,7 +230,7 @@ while True:
             green_led.value(1)
             blue_led.value(0)
 
-            print("STATUS: Optimal operations. LED -> SOLID GREEN")
+            print("STATUS: Optimal operations.")
 
         else:
             status = "warning"
@@ -239,7 +239,7 @@ while True:
             green_led.value(0)
             blue_led.value(1)
 
-            print("STATUS: Warning. Conditions drifting. LED -> PURPLE")
+            print("STATUS: Warning. Conditions drifting.")
 
         print("-------------------------")
 
