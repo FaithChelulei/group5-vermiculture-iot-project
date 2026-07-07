@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell, Legend } from "recharts";
 
-// =================== SVG ICONS ===================
+
 const IconLayoutDashboard = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
 );
@@ -50,7 +50,7 @@ const IconSmartphone = ({ size = 20 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
 );
 
-// =================== FIREBASE UTILS ===================
+// =================== FIREBASE ===================
 const FIREBASE_PROJECT_ID = "internetofthings-26312";
 const FIREBASE_API_KEY    = "AIzaSyBSWR_5mZqJVREUxSesooHKZ7g2FBQXQKs";
 const FIRESTORE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
@@ -94,7 +94,7 @@ async function fetchReadings(limitN = 20) {
     .reverse();
 }
 
-// =================== CSV EXPORT & AGGREGATION HELPERS ===================
+//CSV Export Function
 function exportToCSV(data, filename = "sensor_data.csv") {
   if (!data || !data.length) return;
   const headers = ["Timestamp", "Device ID", "Temperature (°C)", "Humidity (%)", "Soil Moisture (%)", "pH Level", "LED Status", "Alert"];
@@ -163,7 +163,7 @@ function getWeeklyOverview(readings) {
   }));
 }
 
-// =================== STATUS HELPERS (use settings) ===================
+//Status Evaluation Functions
 function tempStatus(t, settings) {
   if (t >= settings.tempMin && t <= settings.tempMax) return "optimal";
   if (t > settings.tempMax && t <= settings.tempMax + 5) return "warn";
@@ -171,9 +171,9 @@ function tempStatus(t, settings) {
   return "bad";
 }
 function humStatus(h, settings) {
-  if (h >= settings.humMin && h <= settings.humMax) return "optimal";
-  if (h > settings.humMax && h <= settings.humMax + 10) return "warn";
-  if (h < settings.humMin && h >= settings.humMin - 10) return "warn";
+  if (h >= settings.humMin && h <= settings.humMax) {return "optimal";}
+  if (h >= settings.humMin - 15 && h < settings.humMin) {return "warn";}
+  if (h > settings.humMax && h <= settings.humMax + 10) {return "warn";}
   return "bad";
 }
 function moistStatus(m, settings) {
@@ -187,6 +187,18 @@ function phStatus(ph, settings) {
   if ((ph >= settings.phMin - 1 && ph < settings.phMin) || (ph > settings.phMax && ph <= settings.phMax + 1)) return "warn";
   return "bad";
 }
+function overallStatus(reading, settings) {
+  const statuses = [
+    tempStatus(reading.temperature, settings),
+    humStatus(reading.humidity, settings),
+    moistStatus(reading.moisture_percent, settings),
+    phStatus(reading.ph_value, settings),
+  ];
+
+  if (statuses.includes("bad")) return "bad";
+  if (statuses.includes("warn")) return "warn";
+  return "optimal";
+}
 
 const STATUS_META = {
   optimal: { label: "Optimal",  bg: "#EAF3DE", color: "#3B6D11", dot: "#639922" },
@@ -194,7 +206,7 @@ const STATUS_META = {
   bad:     { label: "Critical", bg: "#FCEBEB", color: "#A32D2D", dot: "#E24B4A" },
 };
 
-// =================== COLORS ===================
+//Colors used throughout the dashboard for consistency
 const COLORS = {
   primary: "#1B4332",
   primaryLight: "#2D6A4F",
@@ -217,7 +229,7 @@ const COLORS = {
 };
 
 // =================== SINGLE BED DATA ===================
-const THE_BED = { name: "Bed 1", pct: 78, due: "Dec 15, 2026", temp: 22, hum: 68, moist: 72, ph: 7.0 };
+const THE_BED = { name: "Bed 1", pct: 78, due: "Dec 15, 2026"};
 
 const REMINDERS = [
   { title: "Feed the bed", time: "Today, 10:00 AM", type: "feeding" },
@@ -559,12 +571,11 @@ function PageHeader({ title, subtitle, actions }) {
   );
 }
 
-function DashboardPage({ readings, lastUpdated, chartData, weekData, latest, settings }) {
+function DashboardPage({ readings, lastUpdated, chartData, weekData, latest, settings, statusDistribution}) {
   const tStat = tempStatus(latest?.temperature, settings);
   const hStat = humStatus(latest?.humidity, settings);
   const mStat = moistStatus(latest?.moisture_percent, settings);
   const pStat = phStatus(latest?.ph_value, settings);
-
   return (
     <>
       <PageHeader
@@ -870,14 +881,9 @@ function CalendarPage({ events, onAddEvent }) {
   );
 }
 
-function AnalyticsPage({ readings, chartData }) {
+function AnalyticsPage({ readings, chartData, statusDistribution}) {
   const weekData = getWeeklyOverview(readings);
 
-  const statusDistribution = [
-    { name: "Optimal", value: readings.filter(r => r.temperature >= 15 && r.temperature <= 25 && r.humidity >= 60 && r.humidity <= 80).length, color: "#40916C" },
-    { name: "Monitor", value: readings.filter(r => (r.temperature > 25 && r.temperature <= 30) || (r.humidity >= 50 && r.humidity < 60)).length, color: "#D4A373" },
-    { name: "Critical", value: readings.filter(r => r.temperature > 30 || r.temperature < 15 || r.humidity < 50).length, color: "#E24B4A" },
-  ];
 
   return (
     <>
@@ -1154,6 +1160,36 @@ export default function VermicultureDashboard() {
 
   const latest = readings[readings.length - 1];
   const unreadCount = notifications.filter(n => !n.read).length;
+  const statusCounts = {
+  optimal: 0,
+  warn: 0,
+  bad: 0,
+};
+
+readings.forEach((r) => {
+  statusCounts[tempStatus(r.temperature, settings)]++;
+  statusCounts[humStatus(r.humidity, settings)]++;
+  statusCounts[moistStatus(r.moisture_percent, settings)]++;
+  statusCounts[phStatus(r.ph_value, settings)]++;
+});
+
+const statusDistribution = [
+  {
+    name: "Optimal",
+    value: statusCounts.optimal,
+    color: "#40916C",
+  },
+  {
+    name: "Monitor",
+    value: statusCounts.warn,
+    color: "#D4A373",
+  },
+  {
+    name: "Critical",
+    value: statusCounts.bad,
+    color: "#E24B4A",
+  },
+];
 
   const handleMarkAllRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -1181,13 +1217,13 @@ export default function VermicultureDashboard() {
   const renderPage = () => {
     switch (currentPage) {
       case "dashboard":
-        return <DashboardPage readings={readings} lastUpdated={lastUpdated} chartData={chartData} weekData={weekData} latest={latest} settings={settings} />;
+        return <DashboardPage readings={readings} lastUpdated={lastUpdated} chartData={chartData} weekData={weekData} latest={latest} settings={settings} statusDistribution={statusDistribution}  />;
       case "beds":
         return <BedsPage latest={latest} settings={settings} />;
       case "calendar":
         return <CalendarPage events={events} onAddEvent={(newEvent) => setEvents(prev => [...prev, newEvent])} />;
       case "analytics":
-        return <AnalyticsPage readings={readings} chartData={chartData} />;
+        return <AnalyticsPage readings={readings} chartData={chartData} statusDistribution={statusDistribution} />;
       case "settings":
         return <SettingsPage settings={settings} onSettingsChange={setSettings} />;
       case "help":
