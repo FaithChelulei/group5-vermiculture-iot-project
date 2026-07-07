@@ -38,18 +38,11 @@ const IconCheck = ({ size = 16 }) => (
 const IconPlus = ({ size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
 );
-const IconVideo = ({ size = 16 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
-);
+
 const IconClock = ({ size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
 );
-const IconPause = ({ size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-);
-const IconStop = ({ size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-);
+
 const IconDownload = ({ size = 16 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
 );
@@ -86,6 +79,75 @@ async function fetchReadings(limitN = 20) {
   if (!res.ok) throw new Error("Firestore fetch failed");
   const data = await res.json();
   return (data.documents || []).map(firestoreDocToJS).reverse();
+}
+
+// =================== CSV EXPORT & AGGREGATION HELPERS ===================
+function exportToCSV(data, filename = "sensor_data.csv") {
+  if (!data || !data.length) return;
+  const headers = ["Timestamp", "Device ID", "Temperature (°C)", "Humidity (%)", "Soil Moisture (%)", "pH Level", "LED Status", "Alert"];
+  const rows = data.map(r => [
+    r.timestamp ? new Date(r.timestamp).toISOString() : "",
+    r.device_id || "",
+    r.temperature != null ? r.temperature : "",
+    r.humidity != null ? r.humidity : "",
+    r.moisture_percent != null ? Math.round(r.moisture_percent) : "",
+    r.ph_value != null ? Number(r.ph_value).toFixed(2) : "",
+    r.led_status || "",
+    r.alert != null ? r.alert : ""
+  ]);
+
+  const csvContent = [
+    headers.join(","),
+    ...rows.map(row => row.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))
+  ].join("\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = "hidden";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function getWeeklyOverview(readings) {
+  const groups = {};
+  readings.forEach(r => {
+    if (!r.timestamp) return;
+    const d = new Date(r.timestamp);
+    const dateStr = d.toDateString();
+    if (!groups[dateStr]) {
+      groups[dateStr] = {
+        dateStr,
+        timestamp: d.getTime(),
+        day: d.toLocaleDateString('en-US', { weekday: 'narrow' }),
+        dayName: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        tempSum: 0,
+        humSum: 0,
+        moistSum: 0,
+        phSum: 0,
+        count: 0
+      };
+    }
+    groups[dateStr].tempSum += r.temperature;
+    groups[dateStr].humSum += r.humidity;
+    groups[dateStr].moistSum += r.moisture_percent;
+    groups[dateStr].phSum += r.ph_value || 0;
+    groups[dateStr].count += 1;
+  });
+
+  const sorted = Object.values(groups).sort((a, b) => a.timestamp - b.timestamp);
+  const last7Days = sorted.slice(-7);
+  return last7Days.map(g => ({
+    day: g.day,
+    dayName: g.dayName,
+    temp: Number((g.tempSum / g.count).toFixed(1)),
+    humidity: Number((g.humSum / g.count).toFixed(1)),
+    moisture: Number((g.moistSum / g.count).toFixed(1)),
+    ph: Number((g.phSum / g.count).toFixed(2))
+  }));
 }
 
 // =================== STATUS HELPERS (use settings) ===================
@@ -142,20 +204,12 @@ const COLORS = {
 };
 
 // =================== SINGLE BED DATA ===================
-const THE_BED = { name: "Bed 1", pct: 78, due: "Dec 15, 2024", temp: 22, hum: 68, moist: 72, ph: 7.0 };
+const THE_BED = { name: "Bed 1", pct: 78, due: "Dec 15, 2026", temp: 22, hum: 68, moist: 72, ph: 7.0 };
 
 const REMINDERS = [
   { title: "Feed the bed", time: "Today, 10:00 AM", type: "feeding" },
   { title: "Check Moisture Levels", time: "Today, 2:00 PM", type: "check" },
   { title: "pH Sensor Calibration", time: "Tomorrow, 9:00 AM", type: "calibration" },
-];
-
-const CALENDAR_EVENTS = [
-  { day: 5, title: "Feed the bed", type: "feeding" },
-  { day: 12, title: "Check bed readiness", type: "check" },
-  { day: 15, title: "Check pH levels", type: "check" },
-  { day: 20, title: "Review progress", type: "meeting" },
-  { day: 26, title: "Sensor maintenance", type: "maintenance" },
 ];
 
 // =================== SUB-COMPONENTS ===================
@@ -385,11 +439,6 @@ function RemindersCard() {
           </div>
         ))}
       </div>
-      <button style={{
-        width: "100%", marginTop: 16, padding: "10px 0", borderRadius: 10, border: "none",
-        background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer",
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-      }}><IconVideo size={16} /> Start Feeding</button>
     </div>
   );
 }
@@ -458,28 +507,7 @@ function ProgressGauge() {
   );
 }
 
-function SystemStatusCard({ lastUpdated }) {
-  const uptime = lastUpdated ? Math.floor((Date.now() - lastUpdated.getTime()) / 1000) : 0;
-  const hours = Math.floor(uptime / 3600).toString().padStart(2, "0");
-  const mins = Math.floor((uptime % 3600) / 60).toString().padStart(2, "0");
-  const secs = (uptime % 60).toString().padStart(2, "0");
-
-  return (
-    <div style={{ background: "#1B4332", borderRadius: 16, padding: "20px", color: "#fff", position: "relative", overflow: "hidden" }}>
-      <div style={{ position: "absolute", top: -20, right: -20, width: 100, height: 100, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
-      <div style={{ position: "absolute", bottom: -30, left: -30, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.03)" }} />
-      <div style={{ position: "relative", zIndex: 1 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>System Uptime</div>
-        <div style={{ fontSize: 32, fontWeight: 700, letterSpacing: 2, marginBottom: 4 }}>{hours}:{mins}:{secs}</div>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginBottom: 20 }}>Since last data refresh</div>
-        <div style={{ display: "flex", gap: 12 }}>
-          <button style={{ width: 40, height: 40, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><IconPause size={18} /></button>
-          <button style={{ width: 40, height: 40, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.1)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><IconStop size={18} /></button>
-        </div>
-      </div>
-    </div>
-  );
-}
+// SystemStatusCard removed
 
 function LineChartCard({ title, data, dataKey, color, domain, name }) {
   return (
@@ -530,8 +558,7 @@ function DashboardPage({ readings, lastUpdated, chartData, weekData, latest, set
         title="Dashboard"
         subtitle="Monitor, analyze, and optimize your vermiculture bed with ease."
         actions={<>
-          <button style={{ padding: "10px 20px", borderRadius: 24, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}><IconPlus size={14} /> Add Reading</button>
-          <button style={{ padding: "10px 20px", borderRadius: 24, border: `1px solid ${COLORS.border}`, background: "transparent", color: COLORS.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Export Data</button>
+          <button onClick={() => exportToCSV(readings, "vermiculture_sensor_data.csv")} style={{ padding: "10px 20px", borderRadius: 24, border: `1px solid ${COLORS.border}`, background: "transparent", color: COLORS.text, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}><IconDownload size={14} /> Export Data</button>
         </>}
       />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
@@ -545,7 +572,7 @@ function DashboardPage({ readings, lastUpdated, chartData, weekData, latest, set
         <RemindersCard />
         <BedListCard />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
         <div style={{ background: COLORS.card, borderRadius: 16, padding: "20px", border: `1px solid ${COLORS.border}` }}>
           <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.text, marginBottom: 12 }}>Recent Readings</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -563,7 +590,6 @@ function DashboardPage({ readings, lastUpdated, chartData, weekData, latest, set
           </div>
         </div>
         <ProgressGauge />
-        <SystemStatusCard lastUpdated={lastUpdated} />
       </div>
       <div style={{ marginTop: 24 }}>
         <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.text, marginBottom: 12 }}>Live Sensor Trends</div>
@@ -599,9 +625,7 @@ function BedsPage({ latest, settings }) {
       <PageHeader
         title="Vermiculture Bed"
         subtitle="Monitor the single vermiculture bed sensor readings."
-        actions={<>
-          <button style={{ padding: "10px 20px", borderRadius: 24, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}><IconPlus size={14} /> Add Reading</button>
-        </>}
+        actions={null}
       />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 24 }}>
         <SensorCard label="Temperature" value={latest?.temperature ?? "—"} unit="°C" status={tStat} icon="🌡" color={COLORS.red} />
@@ -661,19 +685,54 @@ function BedsPage({ latest, settings }) {
   );
 }
 
-function CalendarPage() {
+function CalendarPage({ events, onAddEvent }) {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
+  
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+  
   const calendarDays = [];
   for (let i = 0; i < firstDay; i++) calendarDays.push(null);
   for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i);
 
   const eventTypeColors = { feeding: "#40916C", harvest: "#D4A373", check: "#378ADD", meeting: "#8A2BE2", maintenance: "#E24B4A" };
+
+  const [showModal, setShowModal] = useState(false);
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventDay, setEventDay] = useState(today.getDate());
+  const [eventType, setEventType] = useState("feeding");
+
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(year, month - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(year, month + 1, 1));
+  };
+
+  const handleAddSubmit = (e) => {
+    e.preventDefault();
+    if (!eventTitle.trim()) return;
+    onAddEvent({
+      day: Number(eventDay),
+      month: month,
+      year: year,
+      title: eventTitle.trim(),
+      type: eventType
+    });
+    setEventTitle("");
+    setEventDay(today.getDate());
+    setEventType("feeding");
+    setShowModal(false);
+  };
+
+  const currentMonthEvents = events.filter(e => e.month === month && e.year === year);
 
   return (
     <>
@@ -681,7 +740,7 @@ function CalendarPage() {
         title="Calendar"
         subtitle={`${monthNames[month]} ${year} — Schedule and manage your vermiculture tasks.`}
         actions={<>
-          <button style={{ padding: "10px 20px", borderRadius: 24, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}><IconPlus size={14} /> Add Event</button>
+          <button onClick={() => setShowModal(true)} style={{ padding: "10px 20px", borderRadius: 24, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}><IconPlus size={14} /> Add Event</button>
           <a href="https://calendar.google.com/calendar/u/0/r" target="_blank" rel="noreferrer" style={{ padding: "10px 20px", borderRadius: 24, border: `1px solid ${COLORS.border}`, background: "transparent", color: COLORS.text, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}><IconExternalLink size={14} /> Google Calendar</a>
         </>}
       />
@@ -690,8 +749,8 @@ function CalendarPage() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.text }}>{monthNames[month]} {year}</div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "transparent", cursor: "pointer" }}>‹</button>
-              <button style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "transparent", cursor: "pointer" }}>›</button>
+              <button onClick={handlePrevMonth} style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "transparent", cursor: "pointer" }}>‹</button>
+              <button onClick={handleNextMonth} style={{ width: 32, height: 32, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: "transparent", cursor: "pointer" }}>›</button>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8, marginBottom: 8 }}>
@@ -699,8 +758,8 @@ function CalendarPage() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
             {calendarDays.map((d, i) => {
-              const event = CALENDAR_EVENTS.find(e => e.day === d);
-              const isToday = d === today.getDate();
+              const dayEvent = currentMonthEvents.find(e => e.day === d);
+              const isToday = d === today.getDate() && month === today.getMonth() && year === today.getFullYear();
               return (
                 <div key={i} style={{
                   aspectRatio: "1", borderRadius: 10, padding: 8,
@@ -711,8 +770,8 @@ function CalendarPage() {
                   position: "relative", fontSize: 14, fontWeight: 500, cursor: "pointer",
                 }}>
                   {d}
-                  {event && (
-                    <div style={{ position: "absolute", bottom: 6, width: 6, height: 6, borderRadius: "50%", background: eventTypeColors[event.type] || COLORS.primary }} />
+                  {dayEvent && (
+                    <div style={{ position: "absolute", bottom: 6, width: 6, height: 6, borderRadius: "50%", background: eventTypeColors[dayEvent.type] || COLORS.primary }} />
                   )}
                 </div>
               );
@@ -721,17 +780,21 @@ function CalendarPage() {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div style={{ background: COLORS.card, borderRadius: 16, padding: "20px", border: `1px solid ${COLORS.border}` }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.text, marginBottom: 16 }}>Upcoming Events</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.text, marginBottom: 16 }}>Events this Month</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {CALENDAR_EVENTS.map((e, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: i < CALENDAR_EVENTS.length - 1 ? `1px solid ${COLORS.border}` : "none" }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: eventTypeColors[e.type] || COLORS.primary, flexShrink: 0 }} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>{e.title}</div>
-                    <div style={{ fontSize: 11, color: COLORS.textSecondary }}>{monthNames[month]} {e.day}, {year}</div>
+              {currentMonthEvents.length === 0 ? (
+                <div style={{ fontSize: 13, color: COLORS.textSecondary, textAlign: "center", padding: "12px 0" }}>No events scheduled</div>
+              ) : (
+                currentMonthEvents.map((e, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: i < currentMonthEvents.length - 1 ? `1px solid ${COLORS.border}` : "none" }}>
+                    <div style={{ width: 8, height: 8, borderRadius: "50%", background: eventTypeColors[e.type] || COLORS.primary, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>{e.title}</div>
+                      <div style={{ fontSize: 11, color: COLORS.textSecondary }}>{monthNames[month]} {e.day}, {year}</div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
           <div style={{ background: COLORS.card, borderRadius: 16, padding: "20px", border: `1px solid ${COLORS.border}` }}>
@@ -747,20 +810,55 @@ function CalendarPage() {
           </div>
         </div>
       </div>
+
+      {showModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0, 0, 0, 0.4)", backdropFilter: "blur(4px)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: COLORS.card, padding: 24, borderRadius: 16,
+            width: 360, border: `1px solid ${COLORS.border}`,
+            boxShadow: "0 12px 32px rgba(0,0,0,0.15)",
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: COLORS.text, marginBottom: 16 }}>Add New Event</div>
+            <form onSubmit={handleAddSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: COLORS.textSecondary, marginBottom: 4 }}>Event Title</label>
+                <input type="text" value={eventTitle} onChange={e => setEventTitle(e.target.value)} required placeholder="e.g. Feed the bed" style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: COLORS.textSecondary, marginBottom: 4 }}>Day of Month</label>
+                  <input type="number" min="1" max={daysInMonth} value={eventDay} onChange={e => setEventDay(Number(e.target.value))} required style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 14, outline: "none", boxSizing: "border-box" }} />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: COLORS.textSecondary, marginBottom: 4 }}>Event Type</label>
+                  <select value={eventType} onChange={e => setEventType(e.target.value)} style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: `1px solid ${COLORS.border}`, fontSize: 14, outline: "none", background: "#fff", boxSizing: "border-box" }}>
+                    <option value="feeding">Feeding</option>
+                    <option value="harvest">Harvest</option>
+                    <option value="check">Check</option>
+                    <option value="meeting">Meeting</option>
+                    <option value="maintenance">Maintenance</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                <button type="button" onClick={() => setShowModal(false)} style={{ padding: "8px 16px", borderRadius: 20, border: `1px solid ${COLORS.border}`, background: "transparent", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Cancel</button>
+                <button type="submit" style={{ padding: "8px 16px", borderRadius: 20, border: "none", background: COLORS.primary, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Add Event</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
 function AnalyticsPage({ readings, chartData }) {
-  const weekData = [
-    { day: "S", temp: 21, humidity: 62, moisture: 55, ph: 6.8 },
-    { day: "M", temp: 22, humidity: 65, moisture: 60, ph: 7.0 },
-    { day: "T", temp: 24, humidity: 70, moisture: 68, ph: 7.2 },
-    { day: "W", temp: 23, humidity: 68, moisture: 65, ph: 6.9 },
-    { day: "T", temp: 25, humidity: 72, moisture: 72, ph: 7.1 },
-    { day: "F", temp: 22, humidity: 64, moisture: 58, ph: 6.7 },
-    { day: "S", temp: 21, humidity: 60, moisture: 52, ph: 6.8 },
-  ];
+  const weekData = getWeeklyOverview(readings);
 
   const statusDistribution = [
     { name: "Optimal", value: readings.filter(r => r.temperature >= 15 && r.temperature <= 25 && r.humidity >= 60 && r.humidity <= 80).length, color: "#40916C" },
@@ -774,7 +872,7 @@ function AnalyticsPage({ readings, chartData }) {
         title="Analytics"
         subtitle="Deep dive into sensor data and bed performance trends."
         actions={<>
-          <button style={{ padding: "10px 20px", borderRadius: 24, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}><IconDownload size={14} /> Export Report</button>
+          <button onClick={() => exportToCSV(readings, "vermiculture_analytics_report.csv")} style={{ padding: "10px 20px", borderRadius: 24, border: "none", background: COLORS.primary, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}><IconDownload size={14} /> Export Report</button>
         </>}
       />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginBottom: 24 }}>
@@ -989,9 +1087,19 @@ export default function VermicultureDashboard() {
   const pollRef = useRef(null);
   const prevReadingRef = useRef(null);
 
+  // Initialize and manage events state
+  const todayDate = new Date();
+  const [events, setEvents] = useState([
+    { day: 5, month: todayDate.getMonth(), year: todayDate.getFullYear(), title: "Feed the bed", type: "feeding" },
+    { day: 12, month: todayDate.getMonth(), year: todayDate.getFullYear(), title: "Check bed readiness", type: "check" },
+    { day: 15, month: todayDate.getMonth(), year: todayDate.getFullYear(), title: "Check pH levels", type: "check" },
+    { day: 20, month: todayDate.getMonth(), year: todayDate.getFullYear(), title: "Review progress", type: "meeting" },
+    { day: 26, month: todayDate.getMonth(), year: todayDate.getFullYear(), title: "Sensor maintenance", type: "maintenance" },
+  ]);
+
   const loadData = async () => {
     try {
-      const data = await fetchReadings(20);
+      const data = await fetchReadings(100);
       if (data.length === 0) throw new Error("No data");
       const prev = prevReadingRef.current;
       const latest = data[data.length - 1];
@@ -1029,15 +1137,7 @@ export default function VermicultureDashboard() {
     ph: r.ph_value ? Number(r.ph_value.toFixed(2)) : null,
   }));
 
-  const weekData = [
-    { day: "S", temp: 21, humidity: 62 },
-    { day: "M", temp: 22, humidity: 65 },
-    { day: "T", temp: 24, humidity: 70 },
-    { day: "W", temp: 23, humidity: 68 },
-    { day: "T", temp: 25, humidity: 72 },
-    { day: "F", temp: 22, humidity: 64 },
-    { day: "S", temp: 21, humidity: 60 },
-  ];
+  const weekData = getWeeklyOverview(readings);
 
   const latest = readings[readings.length - 1];
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -1072,7 +1172,7 @@ export default function VermicultureDashboard() {
       case "beds":
         return <BedsPage latest={latest} settings={settings} />;
       case "calendar":
-        return <CalendarPage />;
+        return <CalendarPage events={events} onAddEvent={(newEvent) => setEvents(prev => [...prev, newEvent])} />;
       case "analytics":
         return <AnalyticsPage readings={readings} chartData={chartData} />;
       case "settings":
