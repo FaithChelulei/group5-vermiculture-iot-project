@@ -76,9 +76,22 @@ function firestoreDocToJS(doc) {
 async function fetchReadings(limitN = 20) {
   const url = `${FIRESTORE_URL}/readings?orderBy=timestamp desc&pageSize=${limitN}&key=${FIREBASE_API_KEY}`;
   const res = await fetch(url);
+
   if (!res.ok) throw new Error("Firestore fetch failed");
+
   const data = await res.json();
-  return (data.documents || []).map(firestoreDocToJS).reverse();
+
+  return (data.documents || [])
+    .map(firestoreDocToJS)
+    .filter(r =>
+      typeof r.temperature === "number" &&
+      typeof r.humidity === "number" &&
+      typeof r.moisture_percent === "number" &&
+      typeof r.ph_value === "number" &&
+      r.ph_value < 14 &&
+      r.timestamp
+    )
+    .reverse();
 }
 
 // =================== CSV EXPORT & AGGREGATION HELPERS ===================
