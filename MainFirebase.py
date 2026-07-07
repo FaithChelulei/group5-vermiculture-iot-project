@@ -207,6 +207,7 @@ while True:
               "(Raw:", ph_raw, ")")
 
         if (temp > 30 or temp < 10 or
+            hum <40 or hum > 80 or
             moisture_percent < 50 or
             moisture_percent > 85 or
             ph_value < 5.5 or
@@ -222,6 +223,7 @@ while True:
 
         elif ((15 <= temp <= 25) and
               (60 <= moisture_percent <= 80) and
+              (60 <= hum <= 80)
               (6.5 <= ph_value <= 7.5)):
 
             status = "optimal"
