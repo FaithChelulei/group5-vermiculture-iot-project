@@ -229,7 +229,7 @@ const COLORS = {
 };
 
 // =================== SINGLE BED DATA ===================
-const THE_BED = { name: "Bed 1", pct: 78, due: "Dec 15, 2026"};
+const THE_BED = { name: "Bed 1", pct: 78};
 
 const REMINDERS = [
   { title: "Feed the bed", time: "Today, 10:00 AM", type: "feeding" },
@@ -671,10 +671,6 @@ function BedsPage({ latest, settings }) {
               </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
-              <div style={{ background: COLORS.bg, borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 4 }}>ESTIMATED HARVEST</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.text }}>{bed.due}</div>
-              </div>
               <div style={{ background: COLORS.bg, borderRadius: 10, padding: "12px 14px" }}>
                 <div style={{ fontSize: 11, color: COLORS.textSecondary, marginBottom: 4 }}>STATUS</div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: rMeta.color }}>{rMeta.label}</div>
